@@ -198,25 +198,47 @@ class Pixy2I2C():
         :return: signature, X center of block (px) (0-315), Y center of block (px) (0-207), width
         of block (px) (0-316), height of block (px) (0-208), angle of color-code in degrees (-180 - 180)
         w/ 0 if not a color code, tracking index (0-255), age or the number of frames this
-        block has been tracked for (0-255) - it stops incrementing at 255.
-        :return: None if it hasn't detected any blocks.
+        block has been tracked for (0-255) - it stops incrementing at 255. Returned as a list of pairs.
+        :return: None if it hasn't detected any blocks or if the process has encountered errors.
         """
         out = [
             # 2 sync bytes, type packet, length payload,
             # sigmap, max blocks to return
             174, 193, 32, 2, sigmap, maxblocks
         ]
-        inp = self.i2c_bus.transfer(out, 20)
-        data = struct.unpack('<7H2B', bytes(inp[4:20]))
+        logger.debug('detect pixy2 blocks')
+        inp = self.i2c_bus.transfer(out, 4)
+        type_packet = inp[2]
+        
+        # got a response blocks response
+        if type_packet == 33:
+            payload_length = inp[3]
+            inp = self.i2c_bus.read_list(reg=None, len=payload_length + 2)
 
-        check_sum = data[0]
-        incoming = data[1:]
-        if check_sum != sum(incoming):
-            logger.debug('no block detected from pixy2 w/ sigmap={}, maxblocks={}'.format(sigmap, maxblocks))
-            return None
+            checksum = struct.unpack('<H', bytes(inp[0:2]))[0]
+            inp = inp[2:]
+
+            # check the checksum
+            if checksum == sum(inp):
+                block_length = 14
+                no_blocks = payload_length // block_length
+                blocks = []
+
+                # and place the data into a vector
+                for i in range(no_blocks):
+                    data = struct.unpack('<5HhBB', bytes(inp[i*block_length:(i+1)*block_length]))
+                    blocks.append(data)
+                logger.debug('pixy2 detected {} blocks'.format(no_blocks))
+
+                return blocks
+            else:
+                logger.debug('checksum doesn\'t match for the detected blocks')
+                return None
         else:
-            logger.debug('detected block from pixy2 w/ sigmap={}, maxblocks={}'.format(sigmap, maxblocks))
-            return data[1:]
+            logger.debug('pixy2 is busy or got into an error while reading blocks')
+            return None
+
+
 
     def __get_main_features(self, payload_length):
         """
