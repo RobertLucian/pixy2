@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='pixy2',
-    version='0.0.1',
+    version='0.1.0',
     author='Robert Lucian Chiriac',
     author_email='robert.lucian.chiriac@gmail.com',
     description='A Python driver library for the Pixy2',
